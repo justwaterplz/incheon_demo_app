@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/primary_background"
+    android:padding="24dp"
+    tools:context=".AnalysisActivity">
+
+    <!-- 헤더 영역 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="32dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="AI 영상 분석"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:textColor="@color/primary_text"
+            android:fontFamily="sans-serif-medium" />
+
+        <Button
+            android:id="@+id/btnCancel"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="취소"
+            android:textColor="@color/error" />
+
+    </LinearLayout>
+
+    <!-- 중앙 분석 영역 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:gravity="center">
+
+        <!-- 분석 아이콘 -->
+        <ImageView
+            android:id="@+id/ivAnalysisIcon"
+            android:layout_width="120dp"
+            android:layout_height="120dp"
+            android:layout_marginBottom="32dp"
+            android:src="@drawable/ic_ai_analysis"
+            android:tint="@color/primary"
+            android:contentDescription="분석 중 아이콘" />
+
+        <!-- 진행률 표시 -->
+        <ProgressBar
+            android:id="@+id/progressBar"
+            style="@style/Widget.Material3.LinearProgressIndicator"
+            android:layout_width="match_parent"
+            android:layout_height="6dp"
+            android:layout_marginBottom="16dp"
+            android:progress="0"
+            android:max="100"
+            android:progressTint="@color/primary"
+            android:progressBackgroundTint="@color/progress_background" />
+
+        <!-- 진행률 텍스트 -->
+        <TextView
+            android:id="@+id/tvProgressText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0%"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="@color/primary"
+            android:layout_marginBottom="24dp"
+            android:fontFamily="sans-serif-medium" />
+
+        <!-- 상태 메시지 -->
+        <TextView
+            android:id="@+id/tvAnalysisStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="분석을 준비하고 있습니다..."
+            android:textSize="16sp"
+            android:textColor="@color/secondary_text"
+            android:gravity="center"
+            android:lineSpacingExtra="4dp"
+            android:fontFamily="sans-serif" />
+
+    </LinearLayout>
+
+    <!-- 하단 정보 영역 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:background="@drawable/bg_info_card"
+        android:layout_marginTop="24dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="AI 분석 정보"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="@color/primary_text"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="• 영상에서 프레임을 추출합니다\n• AI 모델이 각 프레임을 분석합니다\n• 응급상황 여부를 판단합니다"
+            android:textSize="12sp"
+            android:textColor="@color/secondary_text"
+            android:lineSpacingExtra="2dp" />
+
+    </LinearLayout>
+
+</LinearLayout> 

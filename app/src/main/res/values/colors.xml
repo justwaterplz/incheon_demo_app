@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="purple_200">#FFBB86FC</color>
+    <color name="purple_500">#FF6200EE</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="teal_700">#FF018786</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="primary_blue">#FF3BAFDA</color>
+    <color name="light_gray">#FFF5F5F5</color>
+    <color name="text_primary">#FF333333</color>
+    
+    <!-- Primary Colors -->
+    <color name="primary">#2196F3</color>
+    <color name="primary_variant">#1976D2</color>
+    <color name="secondary">#03DAC6</color>
+    
+    <!-- Background Colors -->
+    <color name="primary_background">#FAFAFA</color>
+    <color name="surface">#FFFFFF</color>
+    
+    <!-- Text Colors -->
+    <color name="primary_text">#212121</color>
+    <color name="secondary_text">#757575</color>
+    
+    <!-- Progress & Status Colors -->
+    <color name="progress_background">#E0E0E0</color>
+    <color name="success">#4CAF50</color>
+    <color name="warning">#FF9800</color>
+    <color name="error">#F44336</color>
+    
+    <!-- Emergency Colors -->
+    <color name="emergency_red">#D32F2F</color>
+    <color name="emergency_orange">#FF6F00</color>
+    <color name="safe_green">#388E3C</color>
+</resources>
