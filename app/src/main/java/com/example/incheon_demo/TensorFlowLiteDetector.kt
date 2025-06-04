@@ -19,9 +19,16 @@ class TensorFlowLiteDetector(private val context: Context) {
     
     companion object {
         private const val TAG = "TensorFlowLiteDetector"
-        private const val MODEL_NAME = "emergency_model.tflite"
-        private const val INPUT_SIZE = 224
-        private const val EMERGENCY_THRESHOLD = 0.5f
+        private const val MODEL_NAME = "8cls.tflite"  // 8클래스 TFLite 모델
+        private const val INPUT_SIZE = 200  // 원본 훈련 데이터 해상도에 맞춤 (224 -> 200)
+        private const val NORMAL_CLASS_INDEX = 6  // 6번 클래스가 정상상황
+        private const val NUM_CLASSES = 8  // 총 8개 클래스
+        
+        // 클래스 라벨 정의 (EmergencyDetector와 동일)
+        private val CLASS_LABELS = arrayOf(
+            "폭력행위", "낙상사고", "화재상황", "충돌사고",
+            "절도행위", "이상행동", "정상상황", "응급상황"
+        )
     }
     
     private var interpreter: Interpreter? = null
@@ -33,7 +40,18 @@ class TensorFlowLiteDetector(private val context: Context) {
         val maxConfidence: Float,
         val emergencyFrameRatio: Float,
         val totalFrames: Int,
-        val emergencyFrames: Int
+        val emergencyFrames: Int,
+        val detectedClasses: Map<String, Int> = emptyMap(),  // 감지된 클래스별 프레임 수
+        val dominantClass: String = "알 수 없음"  // 가장 많이 감지된 클래스
+    )
+    
+    // 8클래스 분석 결과를 담는 데이터 클래스
+    data class FrameAnalysisResult(
+        val predictedClass: Int,
+        val confidence: Float,
+        val isEmergency: Boolean,
+        val classLabel: String,
+        val allProbabilities: FloatArray
     )
     
     interface AnalysisProgressCallback {
@@ -44,13 +62,13 @@ class TensorFlowLiteDetector(private val context: Context) {
         try {
             loadModel()
         } catch (e: Exception) {
-            Log.e(TAG, "TensorFlow Lite 모델 로딩 실패: ${e.message}", e)
+            Log.e(TAG, "8클래스 TensorFlow Lite 모델 로딩 실패: ${e.message}", e)
         }
     }
     
     private fun loadModel() {
         try {
-            Log.d(TAG, "TensorFlow Lite 모델 로딩 시작: $MODEL_NAME")
+            Log.d(TAG, "8클래스 TensorFlow Lite 모델 로딩 시작: $MODEL_NAME")
             
             // assets에서 모델 파일 로드
             val modelBuffer: MappedByteBuffer = FileUtil.loadMappedFile(context, MODEL_NAME)
@@ -76,10 +94,10 @@ class TensorFlowLiteDetector(private val context: Context) {
                 .build()
             
             isModelLoaded = true
-            Log.d(TAG, "✓ TensorFlow Lite 모델 로딩 성공")
+            Log.d(TAG, "✓ 8클래스 TensorFlow Lite 모델 로딩 성공")
             
         } catch (e: Exception) {
-            Log.e(TAG, "TensorFlow Lite 모델 로딩 실패: ${e.message}", e)
+            Log.e(TAG, "8클래스 TensorFlow Lite 모델 로딩 실패: ${e.message}", e)
             isModelLoaded = false
             interpreter = null
         }
@@ -98,7 +116,9 @@ class TensorFlowLiteDetector(private val context: Context) {
                 maxConfidence = 0.3f,
                 emergencyFrameRatio = 0.0f,
                 totalFrames = 10,
-                emergencyFrames = 0
+                emergencyFrames = 0,
+                detectedClasses = emptyMap(),
+                dominantClass = "알 수 없음"
             )
         }
         
@@ -151,7 +171,9 @@ class TensorFlowLiteDetector(private val context: Context) {
                     maxConfidence = 0.0f,
                     emergencyFrameRatio = 0.0f,
                     totalFrames = 0,
-                    emergencyFrames = 0
+                    emergencyFrames = 0,
+                    detectedClasses = emptyMap(),
+                    dominantClass = "알 수 없음"
                 )
             }
             
@@ -160,17 +182,19 @@ class TensorFlowLiteDetector(private val context: Context) {
             // 각 프레임에 대해 응급상황 분석
             var maxConfidence = 0.0f
             var emergencyFrameCount = 0
+            val detectedClasses = mutableMapOf<String, Int>()
             
             frames.forEachIndexed { index, frame ->
                 try {
-                    val confidence = analyzeFrame(frame)
+                    val result = analyzeFrame(frame)
                     
-                    if (confidence > maxConfidence) {
-                        maxConfidence = confidence
+                    if (result.confidence > maxConfidence) {
+                        maxConfidence = result.confidence
                     }
                     
-                    if (confidence > EMERGENCY_THRESHOLD) {
+                    if (result.isEmergency) {
                         emergencyFrameCount++
+                        detectedClasses[result.classLabel] = detectedClasses.getOrDefault(result.classLabel, 0) + 1
                     }
                     
                     val analysisProgress = 50 + (index * 40 / frames.size)
@@ -185,6 +209,12 @@ class TensorFlowLiteDetector(private val context: Context) {
             
             // 더 엄격한 기준 적용
             val isEmergency = emergencyFrameRatio > 0.5f && maxConfidence > 0.8f
+            
+            val dominantClass = if (detectedClasses.isNotEmpty()) {
+                detectedClasses.maxByOrNull { it.value }?.key ?: "알 수 없음"
+            } else {
+                "알 수 없음"
+            }
             
             Log.d(TAG, "📈 === TensorFlow Lite 최종 분석 결과 ===")
             Log.d(TAG, "📊 총 프레임: ${frames.size}개")
@@ -201,7 +231,9 @@ class TensorFlowLiteDetector(private val context: Context) {
                 maxConfidence = maxConfidence,
                 emergencyFrameRatio = emergencyFrameRatio,
                 totalFrames = frames.size,
-                emergencyFrames = emergencyFrameCount
+                emergencyFrames = emergencyFrameCount,
+                detectedClasses = detectedClasses,
+                dominantClass = dominantClass
             )
             
         } catch (e: Exception) {
@@ -213,17 +245,31 @@ class TensorFlowLiteDetector(private val context: Context) {
                 maxConfidence = 0.0f,
                 emergencyFrameRatio = 0.0f,
                 totalFrames = 0,
-                emergencyFrames = 0
+                emergencyFrames = 0,
+                detectedClasses = emptyMap(),
+                dominantClass = "알 수 없음"
             )
         }
     }
     
-    private fun analyzeFrame(bitmap: Bitmap): Float {
+    private fun analyzeFrame(bitmap: Bitmap): FrameAnalysisResult {
         return try {
             val interpreter = this.interpreter
             if (interpreter == null || imageProcessor == null) {
                 // 테스트 모드: 랜덤 값 반환
-                return Random.nextFloat() * 0.3f + 0.1f // 0.1 ~ 0.4 사이의 값
+                val randomClass = Random.nextInt(NUM_CLASSES)
+                val randomConfidence = Random.nextFloat() * 0.3f + 0.1f // 0.1 ~ 0.4 사이의 값
+                val isEmergency = randomClass != NORMAL_CLASS_INDEX
+                val classLabel = CLASS_LABELS[randomClass]
+                val allProbabilities = FloatArray(NUM_CLASSES) { if (it == randomClass) randomConfidence else 0.0f }
+                
+                return FrameAnalysisResult(
+                    predictedClass = randomClass,
+                    confidence = randomConfidence,
+                    isEmergency = isEmergency,
+                    classLabel = classLabel,
+                    allProbabilities = allProbabilities
+                )
             }
             
             // 이미지 전처리
@@ -234,7 +280,7 @@ class TensorFlowLiteDetector(private val context: Context) {
             val inputBuffer = processedImage.buffer
             
             // 출력 버퍼 생성
-            val outputBuffer = TensorBuffer.createFixedSize(intArrayOf(1, 2), org.tensorflow.lite.DataType.FLOAT32)
+            val outputBuffer = TensorBuffer.createFixedSize(intArrayOf(1, NUM_CLASSES), org.tensorflow.lite.DataType.FLOAT32)
             
             // 추론 실행
             interpreter.run(inputBuffer, outputBuffer.buffer)
@@ -243,15 +289,34 @@ class TensorFlowLiteDetector(private val context: Context) {
             val scores = outputBuffer.floatArray
             
             // 소프트맥스 적용하여 확률로 변환
-            val emergencyProb = softmax(scores)[1] // 클래스 1 (응급상황)의 확률
+            val probabilities = softmax(scores)
             
-            Log.v(TAG, "TensorFlow Lite 프레임 분석 결과: 응급상황 확률 = $emergencyProb")
+            // 가장 높은 확률의 클래스 찾기
+            val predictedClass = probabilities.indices.maxByOrNull { probabilities[it] } ?: 0
+            val confidence = probabilities[predictedClass]
+            val isEmergency = predictedClass != NORMAL_CLASS_INDEX
+            val classLabel = CLASS_LABELS[predictedClass]
+            val allProbabilities = probabilities
             
-            return emergencyProb
+            Log.v(TAG, "TensorFlow Lite 프레임 분석 결과: 응급상황 확률 = $confidence")
+            
+            return FrameAnalysisResult(
+                predictedClass = predictedClass,
+                confidence = confidence,
+                isEmergency = isEmergency,
+                classLabel = classLabel,
+                allProbabilities = allProbabilities
+            )
             
         } catch (e: Exception) {
             Log.w(TAG, "TensorFlow Lite 프레임 분석 실패: ${e.message}")
-            return 0.0f
+            return FrameAnalysisResult(
+                predictedClass = -1,
+                confidence = 0.0f,
+                isEmergency = false,
+                classLabel = "알 수 없음",
+                allProbabilities = FloatArray(NUM_CLASSES) { 0.0f }
+            )
         }
     }
     

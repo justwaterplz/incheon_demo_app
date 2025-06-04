@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
 import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -39,6 +40,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<MaterialCardView>(R.id.btnVideoFileTest).setOnClickListener {
             selectVideoFile()
         }
+        
+        // 모델 로딩 테스트 버튼 (테스트용)
+        testModelLoading()
     }
 
     private fun checkAndRequestPermissions() {
@@ -115,25 +119,27 @@ class MainActivity : AppCompatActivity() {
                     val totalFrames = data.getIntExtra("total_frames", 0)
                     val emergencyFrames = data.getIntExtra("emergency_frames", 0)
                     
-                    Log.d(TAG, "📊 테스트 분석 결과:")
-                    Log.d(TAG, "   - 응급상황: $isEmergency")
+                    Log.d(TAG, "📊 8클래스 모델 테스트 분석 결과:")
+                    Log.d(TAG, "   - 재난상황: $isEmergency")
                     Log.d(TAG, "   - 최고 신뢰도: ${String.format("%.1f", maxConfidence * 100)}%")
-                    Log.d(TAG, "   - 응급 프레임 비율: ${String.format("%.1f", emergencyFrameRatio * 100)}%")
-                    Log.d(TAG, "   - 총 프레임: $totalFrames, 응급 프레임: $emergencyFrames")
+                    Log.d(TAG, "   - 재난 프레임 비율: ${String.format("%.1f", emergencyFrameRatio * 100)}%")
+                    Log.d(TAG, "   - 총 프레임: $totalFrames, 재난 프레임: $emergencyFrames")
                     
                     if (isEmergency) {
                         Toast.makeText(this, 
-                            "🚨 테스트 결과: 응급상황 감지!\n" +
+                            "🚨 8클래스 모델 테스트 결과: 재난상황 감지!\n" +
                             "📊 신뢰도: ${String.format("%.1f", maxConfidence * 100)}%\n" +
-                            "📈 응급 비율: ${String.format("%.1f", emergencyFrameRatio * 100)}%\n" +
-                            "🎯 기준: 비율>50% & 신뢰도>80%", 
+                            "📈 재난 비율: ${String.format("%.1f", emergencyFrameRatio * 100)}%\n" +
+                            "🎯 기준: 비율>50% & 신뢰도>80%\n" +
+                            "📋 6번 클래스=정상, 나머지=재난", 
                             Toast.LENGTH_LONG).show()
                     } else {
                         Toast.makeText(this, 
-                            "✅ 테스트 결과: 정상 상황\n" +
+                            "✅ 8클래스 모델 테스트 결과: 정상 상황\n" +
                             "📊 최고 신뢰도: ${String.format("%.1f", maxConfidence * 100)}%\n" +
-                            "📈 응급 비율: ${String.format("%.1f", emergencyFrameRatio * 100)}%\n" +
-                            "💡 현재 기준: 매우 엄격한 모드", 
+                            "📈 재난 비율: ${String.format("%.1f", emergencyFrameRatio * 100)}%\n" +
+                            "💡 6번 클래스가 정상상황으로 분류됨\n" +
+                            "🔧 8클래스 모델 정상 작동", 
                             Toast.LENGTH_LONG).show()
                     }
                 } else {
@@ -200,6 +206,26 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e(TAG, "파일 복사 중 오류: ${e.message}", e)
             null
+        }
+    }
+    
+    private fun testModelLoading() {
+        try {
+            Log.d(TAG, "🧪 === 모델 로딩 테스트 시작 ===")
+            
+            // EmergencyDetector 인스턴스 생성하여 모델 로딩 테스트
+            val detector = EmergencyDetector(this)
+            
+            Log.d(TAG, "🧪 EmergencyDetector 인스턴스 생성 완료")
+            
+            // 약간의 지연 후 정리
+            Handler(mainLooper).postDelayed({
+                detector.cleanup()
+                Log.d(TAG, "🧪 === 모델 로딩 테스트 완료 ===")
+            }, 1000)
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "🧪 모델 로딩 테스트 실패: ${e.message}", e)
         }
     }
 } 

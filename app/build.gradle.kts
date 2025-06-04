@@ -42,10 +42,16 @@ android {
 
     // PyTorch 모델 파일 처리 설정
     androidResources {
-        noCompress += listOf("pth", "pt", "ptl")
+        noCompress += listOf("pth", "pt", "ptl", "tflite")
     }
 
     // PyTorch Mobile 관련 설정
+    packagingOptions {
+        pickFirst("**/libc++_shared.so")
+        pickFirst("**/libjsc.so")
+        pickFirst("**/libtorch_android.so")
+        pickFirst("**/libpytorch_jni.so")
+    }
 }
 
 dependencies {

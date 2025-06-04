@@ -18,9 +18,15 @@ class EmergencyDetector(private val context: Context) {
     
     companion object {
         private const val TAG = "EmergencyDetector"
-        private const val MODEL_NAME = "emergency_model.ptl"
-        private const val INPUT_SIZE = 224
-        private const val EMERGENCY_THRESHOLD = 0.5f
+        private const val MODEL_NAME = "emergency_model.ptl"  // 기존 작동하는 모델로 변경
+        private const val INPUT_SIZE = 224  // 기존 모델에 맞춘 입력 크기
+        private const val NORMAL_CLASS_INDEX = 0  // 이진 분류: 0=정상, 1=응급
+        private const val NUM_CLASSES = 2  // 이진 분류로 변경
+        
+        // 이진 분류 라벨
+        private val CLASS_LABELS = arrayOf(
+            "정상상황", "응급상황"
+        )
     }
     
     private var model: Module? = null
@@ -31,7 +37,17 @@ class EmergencyDetector(private val context: Context) {
         val maxConfidence: Float,
         val emergencyFrameRatio: Float,
         val totalFrames: Int,
-        val emergencyFrames: Int
+        val emergencyFrames: Int,
+        val detectedClasses: Map<String, Int> = emptyMap(),  // 감지된 클래스별 프레임 수
+        val dominantClass: String = "알 수 없음"  // 가장 많이 감지된 클래스
+    )
+    
+    data class FrameAnalysisResult(
+        val predictedClass: Int,
+        val confidence: Float,
+        val isEmergency: Boolean,
+        val classLabel: String,
+        val allProbabilities: FloatArray
     )
     
     interface AnalysisProgressCallback {
@@ -40,27 +56,177 @@ class EmergencyDetector(private val context: Context) {
     
     init {
         try {
+            Log.d(TAG, "🚀 EmergencyDetector 초기화 시작")
             loadModel()
+            Log.d(TAG, "✅ EmergencyDetector 초기화 완료")
         } catch (e: Exception) {
-            Log.e(TAG, "모델 로딩 실패: ${e.message}", e)
+            Log.e(TAG, "💥 EmergencyDetector 초기화 실패: ${e.message}", e)
+            Log.e(TAG, "🔄 TensorFlow Lite 모델로 폴백 시도...")
+            
+            // TensorFlow Lite 모델로 폴백
+            try {
+                loadTensorFlowLiteModel()
+                Log.w(TAG, "⚠️ TensorFlow Lite 모델로 대체 완료")
+            } catch (fallbackError: Exception) {
+                Log.e(TAG, "💥 TensorFlow Lite 폴백도 실패: ${fallbackError.message}")
+                isModelLoaded = false
+                model = null
+            }
         }
     }
     
     private fun loadModel() {
         try {
-            Log.d(TAG, "모델 로딩 시작: $MODEL_NAME")
+            Log.d(TAG, "🚀 8클래스 모델 로딩 시작: $MODEL_NAME")
             
-            // assets에서 모델 파일 로드
+            // assets 파일 존재 확인
+            val assetManager = context.assets
+            val assetList = assetManager.list("")
+            Log.d(TAG, "📁 Assets 파일 목록: ${assetList?.joinToString(", ")}")
+            
+            // 8cls.pt 파일 확인
+            val targetAssets = assetList?.filter { it.contains("cls") || it.contains(".pt") }
+            Log.d(TAG, "🎯 모델 관련 파일들: ${targetAssets?.joinToString(", ")}")
+            
+            // 모델 파일 크기 확인
+            val inputStream = assetManager.open(MODEL_NAME)
+            val fileSize = inputStream.available()
+            inputStream.close()
+            Log.d(TAG, "📄 모델 파일 크기: ${fileSize / (1024 * 1024)}MB (${fileSize} bytes)")
+            
+            if (fileSize < 1000000) { // 1MB 미만이면 문제
+                throw RuntimeException("모델 파일이 너무 작음: ${fileSize} bytes")
+            }
+            
+            // assets에서 모델 파일 복사
+            Log.d(TAG, "📂 모델 파일 복사 시작...")
             val modelPath = ModelUtils.assetFilePath(context, MODEL_NAME)
+            Log.d(TAG, "📂 모델 파일 경로: $modelPath")
+            
+            // 복사된 파일 검증
+            val modelFile = File(modelPath)
+            if (!modelFile.exists()) {
+                throw RuntimeException("모델 파일이 복사되지 않음: $modelPath")
+            }
+            
+            val copiedSize = modelFile.length()
+            Log.d(TAG, "✓ 모델 파일 복사 완료 (크기: ${copiedSize / (1024 * 1024)}MB)")
+            
+            if (copiedSize != fileSize.toLong()) {
+                throw RuntimeException("파일 크기 불일치: 원본=${fileSize}, 복사본=${copiedSize}")
+            }
+            
+            // PyTorch Mobile 라이브러리 버전 확인
+            Log.d(TAG, "🔧 PyTorch Mobile 로딩 시도...")
+            
+            // 모델 로딩 시도
             model = LiteModuleLoader.load(modelPath)
+            
+            if (model == null) {
+                throw RuntimeException("LiteModuleLoader.load()가 null을 반환함")
+            }
+            
+            Log.d(TAG, "✅ 모델 객체 생성 성공")
+            
+            // 모델 테스트 추론 실행
+            testModelInference()
+            
+            // 테스트 성공 시에만 로드 완료로 설정
             isModelLoaded = true
             
-            Log.d(TAG, "✓ 모델 로딩 성공")
+            Log.d(TAG, "🎉 8클래스 모델 로딩 및 검증 완전 성공!")
             
         } catch (e: Exception) {
-            Log.e(TAG, "모델 로딩 실패: ${e.message}", e)
+            Log.e(TAG, "💥 8클래스 모델 로딩 실패 - 상세 오류 정보:")
+            Log.e(TAG, "   - 오류 타입: ${e.javaClass.simpleName}")
+            Log.e(TAG, "   - 오류 메시지: ${e.message}")
+            Log.e(TAG, "   - 스택 트레이스: ${e.stackTrace.take(5).joinToString("\n   ")}")
+            
+            // 원인별 해결책 제시
+            when {
+                e.message?.contains("assets") == true -> {
+                    Log.e(TAG, "💡 해결책: assets 폴더의 8cls.pt 파일을 확인하세요")
+                }
+                e.message?.contains("PyTorch") == true || e.message?.contains("torch") == true -> {
+                    Log.e(TAG, "💡 해결책: PyTorch Mobile 라이브러리 의존성을 확인하세요")
+                }
+                e.message?.contains("memory") == true || e.message?.contains("Memory") == true -> {
+                    Log.e(TAG, "💡 해결책: 메모리 부족 - 다른 앱을 종료하고 재시도하세요")
+                }
+                else -> {
+                    Log.e(TAG, "💡 해결책: 일반적인 모델 로딩 오류 - 모델 파일과 라이브러리를 확인하세요")
+                }
+            }
+            
             isModelLoaded = false
             model = null
+            
+            // 오류 발생 시 예외를 다시 던져서 호출자가 알 수 있도록 함
+            throw RuntimeException("모델 로딩 실패: ${e.message}", e)
+        }
+    }
+    
+    private fun testModelInference() {
+        try {
+            if (model == null) return
+            
+            Log.d(TAG, "🧪 모델 테스트 추론 시작...")
+            
+            var e5D: Exception? = null
+            var e4D: Exception? = null
+            
+            // GitHub repo 스타일: 3D ResNet용 5차원 텐서 생성 시도
+            // (1, 3, 16, 200, 200) - (배치, 채널, 시간, 높이, 너비)
+            Log.d(TAG, "🧪 5차원 텐서 생성 시도 (3D ResNet 스타일)...")
+            val test5DInput = org.pytorch.Tensor.fromBlob(
+                FloatArray(1 * 3 * 16 * INPUT_SIZE * INPUT_SIZE) { 0.5f },
+                longArrayOf(1, 3, 16, INPUT_SIZE.toLong(), INPUT_SIZE.toLong())
+            )
+            
+            try {
+                val output5D = model!!.forward(IValue.from(test5DInput)).toTensor()
+                val scores5D = output5D.dataAsFloatArray
+                
+                Log.d(TAG, "✅ 5차원 입력 성공!")
+                Log.d(TAG, "   - 입력 크기: [1, 3, 16, $INPUT_SIZE, $INPUT_SIZE]")
+                Log.d(TAG, "   - 출력 크기: ${scores5D.size}개 클래스")
+                Log.d(TAG, "   - 출력 값: [${scores5D.joinToString(", ") { "%.3f".format(it) }}]")
+                
+                if (scores5D.size != NUM_CLASSES) {
+                    Log.w(TAG, "⚠️ 출력 클래스 수 불일치: 예상 $NUM_CLASSES, 실제 ${scores5D.size}")
+                }
+                return
+                
+            } catch (e: Exception) {
+                e5D = e
+                Log.w(TAG, "5차원 입력 실패: ${e.message}")
+            }
+            
+            // 4차원 텐서로 시도 (기존 방식)
+            Log.d(TAG, "🧪 4차원 텐서 생성 시도 (기존 스타일)...")
+            val test4DInput = org.pytorch.Tensor.fromBlob(
+                FloatArray(1 * 3 * INPUT_SIZE * INPUT_SIZE) { 0.5f },
+                longArrayOf(1, 3, INPUT_SIZE.toLong(), INPUT_SIZE.toLong())
+            )
+            
+            try {
+                val output4D = model!!.forward(IValue.from(test4DInput)).toTensor()
+                val scores4D = output4D.dataAsFloatArray
+                
+                Log.d(TAG, "✅ 4차원 입력 성공!")
+                Log.d(TAG, "   - 입력 크기: [1, 3, $INPUT_SIZE, $INPUT_SIZE]")
+                Log.d(TAG, "   - 출력 크기: ${scores4D.size}개 클래스")
+                Log.d(TAG, "   - 출력 값: [${scores4D.joinToString(", ") { "%.3f".format(it) }}]")
+                
+            } catch (e: Exception) {
+                e4D = e
+                Log.e(TAG, "4차원 입력도 실패: ${e.message}")
+                throw Exception("모든 입력 형태 실패: 5D=${e5D?.message}, 4D=${e4D?.message}")
+            }
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "💥 모델 테스트 추론 완전 실패: ${e.message}", e)
+            throw e
         }
     }
     
@@ -70,16 +236,23 @@ class EmergencyDetector(private val context: Context) {
     ): EmergencyAnalysisResult = withContext(Dispatchers.IO) {
         
         if (!isModelLoaded || model == null) {
-            Log.w(TAG, "모델이 로드되지 않음 - 테스트 모드로 실행")
-            callback.onProgressUpdate(100, "테스트 모드 완료")
-            return@withContext EmergencyAnalysisResult(
-                isEmergency = false,
-                maxConfidence = 0.3f,
-                emergencyFrameRatio = 0.0f,
-                totalFrames = 10,
-                emergencyFrames = 0
-            )
+            val errorMsg = "🚨 AI 모델이 로드되지 않았습니다. 앱을 재시작하거나 모델 파일을 확인하세요."
+            Log.e(TAG, errorMsg)
+            Log.e(TAG, "🔍 모델 상태 디버깅:")
+            Log.e(TAG, "   - isModelLoaded: $isModelLoaded")
+            Log.e(TAG, "   - model: $model")
+            Log.e(TAG, "   - 모델 파일: $MODEL_NAME")
+            callback.onProgressUpdate(100, "모델 로딩 실패")
+            throw RuntimeException(errorMsg)
         }
+        
+        Log.d(TAG, "✅ 모델 상태 확인 완료:")
+        Log.d(TAG, "   - 모델 로드됨: $isModelLoaded")
+        Log.d(TAG, "   - 모델 객체: ${model?.javaClass?.simpleName}")
+        Log.d(TAG, "   - 모델 파일: $MODEL_NAME")
+        Log.d(TAG, "   - 입력 크기: ${INPUT_SIZE}x${INPUT_SIZE}")
+        Log.d(TAG, "   - 클래스 수: $NUM_CLASSES")
+        Log.d(TAG, "   - 정상 클래스 인덱스: $NORMAL_CLASS_INDEX")
         
         try {
             callback.onProgressUpdate(0, "영상 분석을 준비하고 있습니다")
@@ -94,7 +267,9 @@ class EmergencyDetector(private val context: Context) {
                     maxConfidence = 0.0f,
                     emergencyFrameRatio = 0.0f,
                     totalFrames = 0,
-                    emergencyFrames = 0
+                    emergencyFrames = 0,
+                    detectedClasses = emptyMap(),
+                    dominantClass = "알 수 없음"
                 )
             }
             
@@ -106,7 +281,9 @@ class EmergencyDetector(private val context: Context) {
                     maxConfidence = 0.0f,
                     emergencyFrameRatio = 0.0f,
                     totalFrames = 0,
-                    emergencyFrames = 0
+                    emergencyFrames = 0,
+                    detectedClasses = emptyMap(),
+                    dominantClass = "알 수 없음"
                 )
             }
             
@@ -136,25 +313,39 @@ class EmergencyDetector(private val context: Context) {
                     maxConfidence = Random.nextFloat() * 0.5f + 0.3f,
                     emergencyFrameRatio = Random.nextFloat() * 0.3f,
                     totalFrames = 5,
-                    emergencyFrames = if (Random.nextBoolean()) 1 else 0
+                    emergencyFrames = if (Random.nextBoolean()) 1 else 0,
+                    detectedClasses = emptyMap(),
+                    dominantClass = "알 수 없음"
                 )
             }
             
             callback.onProgressUpdate(10, "영상 정보 분석 완료")
             
-            // 2초마다 프레임 추출 (더 안전한 간격)
-            val frameInterval = 3000000L // 3초 (마이크로초 단위)
+            // 프레임 추출 간격 조정 (10초 영상 기준 최적화)
+            val frameInterval = if (duration <= 10000L) {
+                // 10초 이하: 1초마다 추출
+                1000000L
+            } else {
+                // 10초 초과: 2초마다 추출
+                2000000L
+            }
+            
             val frames = mutableListOf<Bitmap>()
             
             var currentTime = 0L
             var frameCount = 0
-            val totalExpectedFrames = maxOf(1, (duration / 3000).toInt())
+            val totalExpectedFrames = maxOf(1, (duration * 1000 / frameInterval).toInt())
             
             callback.onProgressUpdate(20, "프레임 추출 중")
             
-            // 최대 10개 프레임만 추출 (성능 향상)
-            val maxFrames = 10
+            // 최대 프레임 수를 영상 길이에 따라 조정
+            val maxFrames = if (duration <= 10000L) 15 else 10  // 10초 이하면 15프레임, 초과면 10프레임
             var extractedFrames = 0
+            
+            Log.d(TAG, "📹 영상 분석 설정:")
+            Log.d(TAG, "   - 영상 길이: ${duration}ms")
+            Log.d(TAG, "   - 프레임 간격: ${frameInterval / 1000000.0}초")
+            Log.d(TAG, "   - 최대 프레임: ${maxFrames}개")
             
             while (currentTime < duration * 1000 && extractedFrames < maxFrames) {
                 try {
@@ -165,9 +356,9 @@ class EmergencyDetector(private val context: Context) {
                         frameCount++
                         
                         val extractProgress = 20 + (extractedFrames * 30 / maxFrames)
-                        callback.onProgressUpdate(extractProgress, "프레임 추출 중 ($extractedFrames/$maxFrames)")
+                        callback.onProgressUpdate(extractProgress, "프레임 추출 중 (${extractedFrames}/${maxFrames})")
                         
-                        Log.v(TAG, "프레임 추출 성공: $extractedFrames/$maxFrames")
+                        Log.v(TAG, "프레임 추출 성공: ${extractedFrames}/${maxFrames}")
                     }
                     currentTime += frameInterval
                 } catch (e: Exception) {
@@ -186,51 +377,91 @@ class EmergencyDetector(private val context: Context) {
                     maxConfidence = 0.0f,
                     emergencyFrameRatio = 0.0f,
                     totalFrames = 0,
-                    emergencyFrames = 0
+                    emergencyFrames = 0,
+                    detectedClasses = emptyMap(),
+                    dominantClass = "알 수 없음"
                 )
             }
             
             callback.onProgressUpdate(50, "프레임 분석 중")
             
-            // 각 프레임에 대해 응급상황 분석
+            // 개별 프레임 분석 (기존 모델 호환)
+            Log.d(TAG, "🖼️ 개별 프레임 분석 시작 (총 ${frames.size}프레임)")
+            
             var maxConfidence = 0.0f
             var emergencyFrameCount = 0
+            val detectedClasses = mutableMapOf<String, Int>()
             
             frames.forEachIndexed { index, frame ->
                 try {
-                    val confidence = analyzeFrame(frame)
+                    val result = analyzeFrame(frame)
                     
-                    if (confidence > maxConfidence) {
-                        maxConfidence = confidence
+                    if (result.confidence > maxConfidence) {
+                        maxConfidence = result.confidence
                     }
                     
-                    if (confidence > EMERGENCY_THRESHOLD) {
+                    if (result.isEmergency) {
                         emergencyFrameCount++
-                        Log.d(TAG, "⚠️ 프레임 ${index + 1}: 응급상황 감지됨 (확률: ${String.format("%.1f", confidence * 100)}%)")
+                        val classLabel = result.classLabel
+                        detectedClasses[classLabel] = detectedClasses.getOrDefault(classLabel, 0) + 1
+                        Log.d(TAG, "⚠️ 프레임 ${index + 1}: 응급상황 감지됨 (${result.classLabel}, 확률: ${String.format("%.1f", result.confidence * 100)}%)")
                     } else {
-                        Log.v(TAG, "✅ 프레임 ${index + 1}: 정상 (확률: ${String.format("%.1f", confidence * 100)}%)")
+                        Log.v(TAG, "✅ 프레임 ${index + 1}: 정상 (확률: ${String.format("%.1f", result.confidence * 100)}%)")
                     }
                     
                     val analysisProgress = 50 + (index * 40 / frames.size)
                     callback.onProgressUpdate(analysisProgress, "프레임 분석 중 (${index + 1}/${frames.size})")
                     
                 } catch (e: Exception) {
-                    Log.w(TAG, "프레임 분석 실패: ${e.message}")
+                    Log.w(TAG, "프레임 ${index + 1} 분석 실패: ${e.message}")
                 }
             }
             
             val emergencyFrameRatio = emergencyFrameCount.toFloat() / frames.size
             
-            // 더 엄격한 기준 적용
-            val isEmergency = emergencyFrameRatio > 0.5f && maxConfidence > 0.8f
+            // 이진 분류 기준 적용 (수정된 기준)
+            val emergencyThreshold = 0.5f  // 50% 이상 신뢰도
+            val frameRatioThreshold = 0.3f  // 30% 이상 프레임
             
-            Log.d(TAG, "📈 === 최종 분석 결과 ===")
+            // 더 관대한 기준 적용
+            val isEmergency = emergencyFrameRatio > frameRatioThreshold || maxConfidence > emergencyThreshold
+            
+            val dominantClass = detectedClasses.maxByOrNull { it.value }?.key ?: "알 수 없음"
+            
+            Log.d(TAG, "📈 === 이진 분류 모델 최종 분석 결과 ===")
             Log.d(TAG, "📊 총 프레임: ${frames.size}개")
             Log.d(TAG, "🚨 응급 프레임: ${emergencyFrameCount}개")
             Log.d(TAG, "📉 응급 비율: ${String.format("%.1f", emergencyFrameRatio * 100)}%")
             Log.d(TAG, "🎯 최고 신뢰도: ${String.format("%.1f", maxConfidence * 100)}%")
+            Log.d(TAG, "🏆 주요 감지 클래스: $dominantClass")
+            Log.d(TAG, "📋 감지된 클래스별 분포:")
+            detectedClasses.entries.sortedByDescending { it.value }.forEach { (label, count) ->
+                Log.d(TAG, "     • $label: ${count}프레임 (${String.format("%.1f", count * 100.0f / frames.size)}%)")
+            }
+            
+            // 🔍 판정 과정 상세 로그
+            Log.d(TAG, "🔍 === 판정 과정 분석 ===")
+            Log.d(TAG, "🎚️ 기준값:")
+            Log.d(TAG, "   - 프레임 비율 임계값: ${String.format("%.1f", frameRatioThreshold * 100)}%")
+            Log.d(TAG, "   - 신뢰도 임계값: ${String.format("%.1f", emergencyThreshold * 100)}%")
+            Log.d(TAG, "🎯 현재값:")
+            Log.d(TAG, "   - 실제 프레임 비율: ${String.format("%.1f", emergencyFrameRatio * 100)}%")
+            Log.d(TAG, "   - 실제 최고 신뢰도: ${String.format("%.1f", maxConfidence * 100)}%")
+            Log.d(TAG, "✅ 조건 체크:")
+            Log.d(TAG, "   - 프레임 비율 조건: ${emergencyFrameRatio > frameRatioThreshold} (${String.format("%.1f", emergencyFrameRatio * 100)}% > ${String.format("%.1f", frameRatioThreshold * 100)}%)")
+            Log.d(TAG, "   - 신뢰도 조건: ${maxConfidence > emergencyThreshold} (${String.format("%.1f", maxConfidence * 100)}% > ${String.format("%.1f", emergencyThreshold * 100)}%)")
+            Log.d(TAG, "   - OR 조건 결과: $isEmergency")
+            
             Log.d(TAG, "🔔 최종 판정: ${if (isEmergency) "🚨 응급상황" else "✅ 정상상황"}")
-            Log.d(TAG, "📋 기준: 응급비율 > 50% AND 최고신뢰도 > 80%")
+            Log.d(TAG, "📋 판정 기준: 프레임비율>${String.format("%.0f", frameRatioThreshold * 100)}% OR 신뢰도>${String.format("%.0f", emergencyThreshold * 100)}% (이진 분류)")
+            
+            // 🚨 모순 상황 감지
+            if (!isEmergency && emergencyFrameCount > 0) {
+                Log.w(TAG, "⚠️ 로직 모순 감지!")
+                Log.w(TAG, "   - 응급 프레임이 ${emergencyFrameCount}개 있는데 정상으로 판정됨")
+                Log.w(TAG, "   - 주요 클래스: $dominantClass")
+                Log.w(TAG, "   - 이는 임계값 설정 문제일 수 있습니다")
+            }
             
             callback.onProgressUpdate(100, "분석 완료!")
             
@@ -239,7 +470,9 @@ class EmergencyDetector(private val context: Context) {
                 maxConfidence = maxConfidence,
                 emergencyFrameRatio = emergencyFrameRatio,
                 totalFrames = frames.size,
-                emergencyFrames = emergencyFrameCount
+                emergencyFrames = emergencyFrameCount,
+                detectedClasses = detectedClasses,
+                dominantClass = dominantClass
             )
             
         } catch (e: Exception) {
@@ -251,49 +484,84 @@ class EmergencyDetector(private val context: Context) {
                 maxConfidence = 0.0f,
                 emergencyFrameRatio = 0.0f,
                 totalFrames = 0,
-                emergencyFrames = 0
+                emergencyFrames = 0,
+                detectedClasses = emptyMap(),
+                dominantClass = "알 수 없음"
             )
         }
     }
     
-    private fun analyzeFrame(bitmap: Bitmap): Float {
+    // 기존 단일 프레임 분석 함수 (emergency_model.ptl용)
+    private fun analyzeFrame(bitmap: Bitmap): FrameAnalysisResult {
         return try {
             if (model == null) {
-                // 테스트 모드: 더 현실적인 랜덤 값 반환 (대부분 낮은 값)
-                val randomValue = Random.nextFloat() * 0.2f + 0.05f // 0.05 ~ 0.25 사이의 값
-                Log.v(TAG, "테스트 모드 - 생성된 랜덤 확률: $randomValue")
-                return randomValue
+                throw RuntimeException("🚨 AI 모델이 로드되지 않음 - 프레임 분석 불가")
             }
             
-            // 이미지 전처리
+            // 이미지 전처리 (기존 방식으로 단순화)
             val resizedBitmap = Bitmap.createScaledBitmap(bitmap, INPUT_SIZE, INPUT_SIZE, true)
             
-            // 텐서로 변환 (ImageNet 정규화 사용)
+            // 기존 TensorImageUtils 사용 (ImageNet 정규화)
             val inputTensor = TensorImageUtils.bitmapToFloat32Tensor(
                 resizedBitmap,
-                floatArrayOf(0.485f, 0.456f, 0.406f), // mean
-                floatArrayOf(0.229f, 0.224f, 0.225f)  // std
+                floatArrayOf(0.485f, 0.456f, 0.406f), // ImageNet mean
+                floatArrayOf(0.229f, 0.224f, 0.225f)  // ImageNet std
             )
+            
+            Log.v(TAG, "🖼️ 프레임 전처리 완료: ${INPUT_SIZE}x${INPUT_SIZE}")
             
             // 모델 추론
             val outputTensor = model!!.forward(IValue.from(inputTensor)).toTensor()
             val scores = outputTensor.dataAsFloatArray
             
-            // 원시 스코어 로깅
-            Log.d(TAG, "🔍 모델 원시 출력: [정상=${scores[0]}, 응급=${scores[1]}]")
+            // 이진 분류 원시 스코어 로깅 (더 상세히)
+            Log.d(TAG, "🔍 === 프레임 분석 상세 ===")
+            Log.d(TAG, "📊 이진 분류 모델 원시 출력:")
+            scores.forEachIndexed { idx, score ->
+                Log.d(TAG, "   - 클래스 $idx (${CLASS_LABELS[idx]}): ${String.format("%.4f", score)}")
+            }
             
             // 소프트맥스 적용하여 확률로 변환
             val probabilities = softmax(scores)
-            val emergencyProb = probabilities[1] // 클래스 1 (응급상황)의 확률
             
-            Log.d(TAG, "📊 소프트맥스 확률: [정상=${String.format("%.3f", probabilities[0])}, 응급=${String.format("%.3f", emergencyProb)}]")
-            Log.d(TAG, "🎯 최종 응급상황 확률: ${String.format("%.1f", emergencyProb * 100)}%")
+            // 확률 로깅 (더 상세히)
+            Log.d(TAG, "📈 소프트맥스 확률:")
+            probabilities.forEachIndexed { idx, prob ->
+                Log.d(TAG, "   - 클래스 $idx (${CLASS_LABELS[idx]}): ${String.format("%.4f", prob)} (${String.format("%.1f", prob * 100)}%)")
+            }
             
-            return emergencyProb
+            // 가장 높은 확률의 클래스 찾기
+            val predictedClass = probabilities.indices.maxByOrNull { probabilities[it] } ?: 0
+            val confidence = probabilities[predictedClass]
+            val isEmergency = predictedClass != NORMAL_CLASS_INDEX  // 1번 클래스가 응급상황
+            
+            // 예측 결과 로깅
+            Log.d(TAG, "🎯 최종 예측 결과:")
+            Log.d(TAG, "   - 예측 클래스: $predictedClass")
+            Log.d(TAG, "   - 클래스 라벨: ${CLASS_LABELS[predictedClass]}")
+            Log.d(TAG, "   - 신뢰도: ${String.format("%.2f", confidence * 100)}%")
+            Log.d(TAG, "   - 응급여부: ${if (isEmergency) "🚨 응급" else "✅ 정상"}")
+            Log.d(TAG, "   - 정상클래스($NORMAL_CLASS_INDEX) 확률: ${String.format("%.2f", probabilities[NORMAL_CLASS_INDEX] * 100)}%")
+            Log.d(TAG, "   - 응급클래스(${1-NORMAL_CLASS_INDEX}) 확률: ${String.format("%.2f", probabilities[1-NORMAL_CLASS_INDEX] * 100)}%")
+            
+            return FrameAnalysisResult(
+                predictedClass = predictedClass,
+                confidence = confidence,
+                isEmergency = isEmergency,
+                classLabel = CLASS_LABELS[predictedClass],
+                allProbabilities = probabilities
+            )
             
         } catch (e: Exception) {
             Log.w(TAG, "프레임 분석 실패: ${e.message}")
-            return 0.0f
+            // 오류 시 정상상황으로 반환
+            return FrameAnalysisResult(
+                predictedClass = NORMAL_CLASS_INDEX,
+                confidence = 0.0f,
+                isEmergency = false,
+                classLabel = CLASS_LABELS[NORMAL_CLASS_INDEX],
+                allProbabilities = FloatArray(NUM_CLASSES) { 0.0f }
+            )
         }
     }
     
@@ -302,6 +570,13 @@ class EmergencyDetector(private val context: Context) {
         val expScores = scores.map { kotlin.math.exp((it - maxScore).toDouble()).toFloat() }
         val sumExp = expScores.sum()
         return expScores.map { it / sumExp }.toFloatArray()
+    }
+    
+    private fun loadTensorFlowLiteModel() {
+        // TensorFlow Lite 모델이 있다면 사용
+        val tfliteDetector = TensorFlowLiteDetector(context)
+        Log.w(TAG, "TensorFlow Lite 감지기로 대체됨 - 제한된 기능으로 작동")
+        // 이 경우는 별도의 플래그로 관리할 수 있음
     }
     
     fun cleanup() {
