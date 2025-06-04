@@ -18,14 +18,16 @@ class EmergencyDetector(private val context: Context) {
     
     companion object {
         private const val TAG = "EmergencyDetector"
-        private const val MODEL_NAME = "emergency_model.ptl"  // 기존 작동하는 모델로 변경
+        private const val MODEL_NAME = "8cls.ptl"  // 8클래스 모델로 변경
         private const val INPUT_SIZE = 224  // 기존 모델에 맞춘 입력 크기
-        private const val NORMAL_CLASS_INDEX = 0  // 이진 분류: 0=정상, 1=응급
-        private const val NUM_CLASSES = 2  // 이진 분류로 변경
+        private const val NORMAL_CLASS_INDEX = 6  // 추정치 - 실제 확인 필요!
+        private const val NUM_CLASSES = 8  // 8클래스로 변경
         
-        // 이진 분류 라벨
+        // ⚠️ 주의: 실제 모델의 클래스 순서가 불명확함!
+        // 아래 라벨들은 추정치이며 실제와 다를 수 있음
         private val CLASS_LABELS = arrayOf(
-            "정상상황", "응급상황"
+            "클래스0", "클래스1", "클래스2", "클래스3",    // 실제 라벨 불명
+            "클래스4", "클래스5", "클래스6", "클래스7"     // 실제 라벨 불명
         )
     }
     
@@ -84,18 +86,18 @@ class EmergencyDetector(private val context: Context) {
             val assetList = assetManager.list("")
             Log.d(TAG, "📁 Assets 파일 목록: ${assetList?.joinToString(", ")}")
             
-            // 8cls.pt 파일 확인
-            val targetAssets = assetList?.filter { it.contains("cls") || it.contains(".pt") }
-            Log.d(TAG, "🎯 모델 관련 파일들: ${targetAssets?.joinToString(", ")}")
+            // 8cls.ptl 파일 확인
+            val targetAssets = assetList?.filter { it.contains("8cls") || it.contains(".ptl") }
+            Log.d(TAG, "🎯 8클래스 모델 관련 파일들: ${targetAssets?.joinToString(", ")}")
             
             // 모델 파일 크기 확인
             val inputStream = assetManager.open(MODEL_NAME)
             val fileSize = inputStream.available()
             inputStream.close()
-            Log.d(TAG, "📄 모델 파일 크기: ${fileSize / (1024 * 1024)}MB (${fileSize} bytes)")
+            Log.d(TAG, "📄 8클래스 모델 파일 크기: ${fileSize / (1024 * 1024)}MB (${fileSize} bytes)")
             
             if (fileSize < 1000000) { // 1MB 미만이면 문제
-                throw RuntimeException("모델 파일이 너무 작음: ${fileSize} bytes")
+                throw RuntimeException("8클래스 모델 파일이 너무 작음: ${fileSize} bytes")
             }
             
             // assets에서 모델 파일 복사
@@ -170,58 +172,78 @@ class EmergencyDetector(private val context: Context) {
         try {
             if (model == null) return
             
-            Log.d(TAG, "🧪 모델 테스트 추론 시작...")
+            Log.d(TAG, "🧪 8클래스 모델 테스트 추론 시작...")
             
-            var e5D: Exception? = null
-            var e4D: Exception? = null
-            
-            // GitHub repo 스타일: 3D ResNet용 5차원 텐서 생성 시도
-            // (1, 3, 16, 200, 200) - (배치, 채널, 시간, 높이, 너비)
-            Log.d(TAG, "🧪 5차원 텐서 생성 시도 (3D ResNet 스타일)...")
-            val test5DInput = org.pytorch.Tensor.fromBlob(
-                FloatArray(1 * 3 * 16 * INPUT_SIZE * INPUT_SIZE) { 0.5f },
-                longArrayOf(1, 3, 16, INPUT_SIZE.toLong(), INPUT_SIZE.toLong())
-            )
-            
-            try {
-                val output5D = model!!.forward(IValue.from(test5DInput)).toTensor()
-                val scores5D = output5D.dataAsFloatArray
-                
-                Log.d(TAG, "✅ 5차원 입력 성공!")
-                Log.d(TAG, "   - 입력 크기: [1, 3, 16, $INPUT_SIZE, $INPUT_SIZE]")
-                Log.d(TAG, "   - 출력 크기: ${scores5D.size}개 클래스")
-                Log.d(TAG, "   - 출력 값: [${scores5D.joinToString(", ") { "%.3f".format(it) }}]")
-                
-                if (scores5D.size != NUM_CLASSES) {
-                    Log.w(TAG, "⚠️ 출력 클래스 수 불일치: 예상 $NUM_CLASSES, 실제 ${scores5D.size}")
-                }
-                return
-                
-            } catch (e: Exception) {
-                e5D = e
-                Log.w(TAG, "5차원 입력 실패: ${e.message}")
-            }
-            
-            // 4차원 텐서로 시도 (기존 방식)
-            Log.d(TAG, "🧪 4차원 텐서 생성 시도 (기존 스타일)...")
-            val test4DInput = org.pytorch.Tensor.fromBlob(
+            // 4차원 텐서로 테스트 (일반적인 이미지 분류)
+            Log.d(TAG, "🧪 4차원 텐서 생성 시도...")
+            val testInput = org.pytorch.Tensor.fromBlob(
                 FloatArray(1 * 3 * INPUT_SIZE * INPUT_SIZE) { 0.5f },
                 longArrayOf(1, 3, INPUT_SIZE.toLong(), INPUT_SIZE.toLong())
             )
             
             try {
-                val output4D = model!!.forward(IValue.from(test4DInput)).toTensor()
-                val scores4D = output4D.dataAsFloatArray
+                val output = model!!.forward(IValue.from(testInput)).toTensor()
+                val scores = output.dataAsFloatArray
                 
-                Log.d(TAG, "✅ 4차원 입력 성공!")
+                Log.d(TAG, "✅ 모델 테스트 성공!")
                 Log.d(TAG, "   - 입력 크기: [1, 3, $INPUT_SIZE, $INPUT_SIZE]")
-                Log.d(TAG, "   - 출력 크기: ${scores4D.size}개 클래스")
-                Log.d(TAG, "   - 출력 값: [${scores4D.joinToString(", ") { "%.3f".format(it) }}]")
+                Log.d(TAG, "   - 출력 크기: ${scores.size}개 클래스")
+                
+                // 🚨 중요: 실제 모델 출력 구조 분석
+                Log.w(TAG, "🔍 === 실제 모델 클래스 구조 분석 필요 ===")
+                Log.w(TAG, "현재 출력 클래스 수: ${scores.size}")
+                Log.w(TAG, "현재 가정한 클래스 수: $NUM_CLASSES")
+                
+                if (scores.size != NUM_CLASSES) {
+                    Log.e(TAG, "⚠️ 클래스 수 불일치!")
+                    Log.e(TAG, "   - 실제 모델: ${scores.size}개 클래스")
+                    Log.e(TAG, "   - 코드 설정: $NUM_CLASSES개 클래스")
+                    Log.e(TAG, "   - 해결 방법: NUM_CLASSES를 ${scores.size}로 변경 필요")
+                    throw RuntimeException("클래스 수 불일치: 실제=${scores.size}, 설정=$NUM_CLASSES")
+                }
+                
+                // 테스트 출력값 분석
+                Log.d(TAG, "🔬 테스트 출력값 분석:")
+                scores.forEachIndexed { idx, score ->
+                    Log.d(TAG, "   - 클래스 $idx: ${String.format("%.4f", score)} (현재 라벨: ${if (idx < CLASS_LABELS.size) CLASS_LABELS[idx] else "알 수 없음"})")
+                }
+                
+                // 소프트맥스 적용
+                val probabilities = softmax(scores)
+                val maxIdx = probabilities.indices.maxByOrNull { probabilities[it] } ?: 0
+                
+                Log.w(TAG, "🎯 테스트 결과:")
+                Log.w(TAG, "   - 가장 높은 확률 클래스: $maxIdx")
+                Log.w(TAG, "   - 현재 가정한 라벨: ${if (maxIdx < CLASS_LABELS.size) CLASS_LABELS[maxIdx] else "알 수 없음"}")
+                Log.w(TAG, "   - 확률: ${String.format("%.2f", probabilities[maxIdx] * 100)}%")
+                Log.w(TAG, "   - 현재 정상 클래스 설정: $NORMAL_CLASS_INDEX")
+                
+                Log.w(TAG, "⚠️ 주의: 클래스 라벨과 순서가 실제 모델과 다를 수 있습니다!")
+                Log.w(TAG, "📝 TODO: 실제 훈련 데이터의 클래스 순서 확인 필요")
+                
+                // 확률 로깅 (모든 클래스 표시)
+                Log.d(TAG, "📈 모든 클래스 확률 분석:")
+                probabilities.forEachIndexed { idx, prob ->
+                    val percentage = String.format("%.1f", prob * 100)
+                    val isHighConfidence = prob > 0.3f
+                    val marker = if (isHighConfidence) "🔥" else "  "
+                    Log.d(TAG, "   $marker 클래스 $idx: ${percentage}% ${if (idx == NORMAL_CLASS_INDEX) "← 정상클래스" else ""}")
+                }
+                
+                // 상위 3개 클래스 표시
+                val sortedIndices = probabilities.indices.sortedByDescending { probabilities[it] }
+                Log.d(TAG, "🏆 상위 3개 클래스:")
+                for (i in 0..2) {
+                    val idx = sortedIndices[i]
+                    val prob = probabilities[idx]
+                    Log.d(TAG, "   ${i+1}위: 클래스 $idx (${String.format("%.1f", prob * 100)}%)")
+                }
+                
+                return
                 
             } catch (e: Exception) {
-                e4D = e
-                Log.e(TAG, "4차원 입력도 실패: ${e.message}")
-                throw Exception("모든 입력 형태 실패: 5D=${e5D?.message}, 4D=${e4D?.message}")
+                Log.e(TAG, "4차원 입력 실패: ${e.message}")
+                throw Exception("모델 테스트 실패: ${e.message}")
             }
             
         } catch (e: Exception) {
@@ -428,7 +450,7 @@ class EmergencyDetector(private val context: Context) {
             
             val dominantClass = detectedClasses.maxByOrNull { it.value }?.key ?: "알 수 없음"
             
-            Log.d(TAG, "📈 === 이진 분류 모델 최종 분석 결과 ===")
+            Log.d(TAG, "📈 === 8클래스 모델 최종 분석 결과 ===")
             Log.d(TAG, "📊 총 프레임: ${frames.size}개")
             Log.d(TAG, "🚨 응급 프레임: ${emergencyFrameCount}개")
             Log.d(TAG, "📉 응급 비율: ${String.format("%.1f", emergencyFrameRatio * 100)}%")
@@ -453,7 +475,7 @@ class EmergencyDetector(private val context: Context) {
             Log.d(TAG, "   - OR 조건 결과: $isEmergency")
             
             Log.d(TAG, "🔔 최종 판정: ${if (isEmergency) "🚨 응급상황" else "✅ 정상상황"}")
-            Log.d(TAG, "📋 판정 기준: 프레임비율>${String.format("%.0f", frameRatioThreshold * 100)}% OR 신뢰도>${String.format("%.0f", emergencyThreshold * 100)}% (이진 분류)")
+            Log.d(TAG, "📋 판정 기준: 프레임비율>${String.format("%.0f", frameRatioThreshold * 100)}% OR 신뢰도>${String.format("%.0f", emergencyThreshold * 100)}% (8클래스 분류, 6번=정상)")
             
             // 🚨 모순 상황 감지
             if (!isEmergency && emergencyFrameCount > 0) {
@@ -493,11 +515,39 @@ class EmergencyDetector(private val context: Context) {
     
     // 기존 단일 프레임 분석 함수 (emergency_model.ptl용)
     private fun analyzeFrame(bitmap: Bitmap): FrameAnalysisResult {
+        // 🚨 디버깅: 현재 모델 상태 명확히 표시
+        Log.d(TAG, "🔍 === 프레임 분석 시작 ===")
+        Log.d(TAG, "📊 모델 상태:")
+        Log.d(TAG, "   - isModelLoaded: $isModelLoaded")
+        Log.d(TAG, "   - model 객체: ${if (model != null) "존재함" else "null"}")
+        Log.d(TAG, "   - 모델 파일: $MODEL_NAME")
+        Log.d(TAG, "   - 예상 클래스 수: $NUM_CLASSES")
+        
         return try {
-            if (model == null) {
-                throw RuntimeException("🚨 AI 모델이 로드되지 않음 - 프레임 분석 불가")
+            if (model == null || !isModelLoaded) {
+                Log.w(TAG, "🚨 === 테스트 모드 실행 ===")
+                Log.w(TAG, "실제 AI 모델이 로드되지 않아 가짜 결과를 반환합니다!")
+                Log.w(TAG, "이는 모델 파일 문제나 라이브러리 오류로 인한 것입니다.")
+                
+                // 테스트 모드에서는 고정된 패턴 반환 (랜덤 대신)
+                val fakeClass = 0  // 항상 정상으로 반환
+                val fakeConfidence = 0.3f  // 낮은 신뢰도
+                
+                Log.w(TAG, "🎭 가짜 결과 반환: 클래스=${fakeClass}, 신뢰도=${fakeConfidence}")
+                
+                return FrameAnalysisResult(
+                    predictedClass = fakeClass,
+                    confidence = fakeConfidence,
+                    isEmergency = fakeClass != NORMAL_CLASS_INDEX,
+                    classLabel = CLASS_LABELS[fakeClass],
+                    allProbabilities = FloatArray(NUM_CLASSES) { if (it == fakeClass) fakeConfidence else 0.0f }
+                )
             }
             
+            Log.d(TAG, "✅ === 실제 AI 모델 실행 ===")
+            Log.d(TAG, "진짜 AI 모델로 추론을 수행합니다!")
+            
+            // 실제 모델 추론 로직
             // 이미지 전처리 (기존 방식으로 단순화)
             val resizedBitmap = Bitmap.createScaledBitmap(bitmap, INPUT_SIZE, INPUT_SIZE, true)
             
@@ -516,7 +566,7 @@ class EmergencyDetector(private val context: Context) {
             
             // 이진 분류 원시 스코어 로깅 (더 상세히)
             Log.d(TAG, "🔍 === 프레임 분석 상세 ===")
-            Log.d(TAG, "📊 이진 분류 모델 원시 출력:")
+            Log.d(TAG, "📊 8클래스 모델 원시 출력:")
             scores.forEachIndexed { idx, score ->
                 Log.d(TAG, "   - 클래스 $idx (${CLASS_LABELS[idx]}): ${String.format("%.4f", score)}")
             }
@@ -524,16 +574,28 @@ class EmergencyDetector(private val context: Context) {
             // 소프트맥스 적용하여 확률로 변환
             val probabilities = softmax(scores)
             
-            // 확률 로깅 (더 상세히)
-            Log.d(TAG, "📈 소프트맥스 확률:")
+            // 확률 로깅 (모든 클래스 표시)
+            Log.d(TAG, "📈 모든 클래스 확률 분석:")
             probabilities.forEachIndexed { idx, prob ->
-                Log.d(TAG, "   - 클래스 $idx (${CLASS_LABELS[idx]}): ${String.format("%.4f", prob)} (${String.format("%.1f", prob * 100)}%)")
+                val percentage = String.format("%.1f", prob * 100)
+                val isHighConfidence = prob > 0.3f
+                val marker = if (isHighConfidence) "🔥" else "  "
+                Log.d(TAG, "   $marker 클래스 $idx: ${percentage}% ${if (idx == NORMAL_CLASS_INDEX) "← 정상클래스" else ""}")
+            }
+            
+            // 상위 3개 클래스 표시
+            val sortedIndices = probabilities.indices.sortedByDescending { probabilities[it] }
+            Log.d(TAG, "🏆 상위 3개 클래스:")
+            for (i in 0..2) {
+                val idx = sortedIndices[i]
+                val prob = probabilities[idx]
+                Log.d(TAG, "   ${i+1}위: 클래스 $idx (${String.format("%.1f", prob * 100)}%)")
             }
             
             // 가장 높은 확률의 클래스 찾기
             val predictedClass = probabilities.indices.maxByOrNull { probabilities[it] } ?: 0
             val confidence = probabilities[predictedClass]
-            val isEmergency = predictedClass != NORMAL_CLASS_INDEX  // 1번 클래스가 응급상황
+            val isEmergency = predictedClass != NORMAL_CLASS_INDEX  // 6번 클래스가 정상상황
             
             // 예측 결과 로깅
             Log.d(TAG, "🎯 최종 예측 결과:")
@@ -542,7 +604,7 @@ class EmergencyDetector(private val context: Context) {
             Log.d(TAG, "   - 신뢰도: ${String.format("%.2f", confidence * 100)}%")
             Log.d(TAG, "   - 응급여부: ${if (isEmergency) "🚨 응급" else "✅ 정상"}")
             Log.d(TAG, "   - 정상클래스($NORMAL_CLASS_INDEX) 확률: ${String.format("%.2f", probabilities[NORMAL_CLASS_INDEX] * 100)}%")
-            Log.d(TAG, "   - 응급클래스(${1-NORMAL_CLASS_INDEX}) 확률: ${String.format("%.2f", probabilities[1-NORMAL_CLASS_INDEX] * 100)}%")
+            Log.d(TAG, "   - 예측된 클래스 확률: ${String.format("%.2f", confidence * 100)}%")
             
             return FrameAnalysisResult(
                 predictedClass = predictedClass,

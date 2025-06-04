@@ -2,49 +2,25 @@ import torch
 import torch.nn as nn
 from torch.utils.mobile_optimizer import optimize_for_mobile
 import os
+import torchvision.models as models
 
-# Emergency Detection Model Architecture
-# 이 클래스는 원본 GitHub 프로젝트의 모델 구조를 재현해야 합니다
+# 8클래스 응급상황 감지 모델 (ResNet 기반)
 class EmergencyDetectionModel(nn.Module):
     """
-    Android용 응급상황 탐지 모델
-    원본 GitHub 프로젝트 (incheon_publicdata)의 모델 구조를 기반으로 합니다.
+    8클래스 응급상황 탐지 모델 (ResNet18 기반)
+    실제 훈련된 모델과 일치하는 구조
     """
-    def __init__(self, num_classes=2):
+    def __init__(self, num_classes=8):
         super(EmergencyDetectionModel, self).__init__()
         
-        # 기본적인 CNN 구조 (실제 모델 구조에 맞게 수정 필요)
-        self.features = nn.Sequential(
-            # 첫 번째 컨볼루션 블록
-            nn.Conv2d(3, 64, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            
-            # 두 번째 컨볼루션 블록
-            nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            
-            # 세 번째 컨볼루션 블록
-            nn.Conv2d(128, 256, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-        )
+        # ResNet18 백본 사용 (pretrained=False)
+        self.backbone = models.resnet18(pretrained=False)
         
-        # 분류기
-        self.classifier = nn.Sequential(
-            nn.AdaptiveAvgPool2d((7, 7)),
-            nn.Flatten(),
-            nn.Linear(256 * 7 * 7, 512),
-            nn.ReLU(inplace=True),
-            nn.Dropout(0.5),
-            nn.Linear(512, num_classes)
-        )
-    
+        # 최종 분류층 교체
+        self.backbone.fc = nn.Linear(self.backbone.fc.in_features, num_classes)
+        
     def forward(self, x):
-        x = self.features(x)
-        x = self.classifier(x)
-        return x
+        return self.backbone(x)
 
 def convert_model_to_mobile(model_path, output_path):
     """
@@ -58,7 +34,7 @@ def convert_model_to_mobile(model_path, output_path):
         print(f"모델 로딩 중: {model_path}")
         
         # 모델 인스턴스 생성
-        model = EmergencyDetectionModel(num_classes=2)
+        model = EmergencyDetectionModel(num_classes=8)
         
         # 저장된 파라미터 로드
         if os.path.exists(model_path):
@@ -141,8 +117,8 @@ def test_lite_model(lite_model_path):
 def main():
     """메인 함수"""
     # 파일 경로 설정
-    model_path = "model.pt"  # 원본 모델 파일
-    output_path = "app/src/main/assets/emergency_model.ptl"  # 변환된 모델이 저장될 경로
+    model_path = "app/src/main/assets/8cls_fin.pt"  # 실제 모델 파일 경로
+    output_path = "app/src/main/assets/8cls.ptl"  # 변환된 모델이 저장될 경로
     
     print("=== PyTorch 모델을 Android용 TorchScript Lite로 변환 ===")
     print(f"입력 모델: {model_path}")

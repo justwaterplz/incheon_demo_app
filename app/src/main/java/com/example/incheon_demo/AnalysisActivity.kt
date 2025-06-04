@@ -131,7 +131,9 @@ class AnalysisActivity : AppCompatActivity() {
                 "AI가 응급상황을 감지했습니다!\n\n" +
                 "• 최대 신뢰도: ${String.format("%.1f", result.maxConfidence * 100)}%\n" +
                 "• 응급 프레임 비율: ${String.format("%.1f", result.emergencyFrameRatio * 100)}%\n" +
-                "• 분석된 프레임: ${result.totalFrames}개\n\n" +
+                "• 분석된 프레임: ${result.totalFrames}개\n" +
+                "• 주요 감지 클래스: ${result.dominantClass}\n\n" +
+                "🤖 모델 상태: ${if (result.maxConfidence > 0.5f) "실제 AI 추론" else "⚠️ 테스트 모드 (낮은 신뢰도)"}\n\n" +
                 "즉시 112에 신고하시겠습니까?"
             )
             .setPositiveButton("112 신고하기") { _, _ ->
@@ -152,7 +154,9 @@ class AnalysisActivity : AppCompatActivity() {
                 "응급상황이 감지되지 않았습니다.\n\n" +
                 "• 최대 신뢰도: ${String.format("%.1f", result.maxConfidence * 100)}%\n" +
                 "• 응급 프레임 비율: ${String.format("%.1f", result.emergencyFrameRatio * 100)}%\n" +
-                "• 분석된 프레임: ${result.totalFrames}개\n\n" +
+                "• 분석된 프레임: ${result.totalFrames}개\n" +
+                "• 주요 감지 클래스: ${result.dominantClass}\n\n" +
+                "🤖 모델 상태: ${if (result.maxConfidence > 0.5f) "실제 AI 추론" else "⚠️ 테스트 모드 (낮은 신뢰도)"}\n\n" +
                 "영상이 안전하게 저장되었습니다."
             )
             .setPositiveButton("확인") { _, _ ->

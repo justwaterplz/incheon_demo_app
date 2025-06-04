@@ -253,15 +253,30 @@ class TensorFlowLiteDetector(private val context: Context) {
     }
     
     private fun analyzeFrame(bitmap: Bitmap): FrameAnalysisResult {
+        // 🚨 디버깅: TensorFlow Lite 모델 상태 명확히 표시
+        Log.d(TAG, "🔍 === TensorFlow Lite 프레임 분석 시작 ===")
+        Log.d(TAG, "📊 TensorFlow Lite 모델 상태:")
+        Log.d(TAG, "   - isModelLoaded: $isModelLoaded")
+        Log.d(TAG, "   - interpreter: ${if (interpreter != null) "존재함" else "null"}")
+        Log.d(TAG, "   - imageProcessor: ${if (imageProcessor != null) "존재함" else "null"}")
+        Log.d(TAG, "   - 모델 파일: $MODEL_NAME")
+        Log.d(TAG, "   - 예상 클래스 수: $NUM_CLASSES")
+        
         return try {
             val interpreter = this.interpreter
             if (interpreter == null || imageProcessor == null) {
+                Log.w(TAG, "🚨 === TensorFlow Lite 테스트 모드 실행 ===")
+                Log.w(TAG, "실제 TensorFlow Lite 모델이 로드되지 않아 가짜 결과를 반환합니다!")
+                Log.w(TAG, "이는 .tflite 모델 파일이 없거나 라이브러리 오류로 인한 것입니다.")
+                
                 // 테스트 모드: 랜덤 값 반환
                 val randomClass = Random.nextInt(NUM_CLASSES)
                 val randomConfidence = Random.nextFloat() * 0.3f + 0.1f // 0.1 ~ 0.4 사이의 값
                 val isEmergency = randomClass != NORMAL_CLASS_INDEX
                 val classLabel = CLASS_LABELS[randomClass]
                 val allProbabilities = FloatArray(NUM_CLASSES) { if (it == randomClass) randomConfidence else 0.0f }
+                
+                Log.w(TAG, "🎭 가짜 랜덤 결과: 클래스=${randomClass}(${classLabel}), 신뢰도=${randomConfidence}, 응급=${isEmergency}")
                 
                 return FrameAnalysisResult(
                     predictedClass = randomClass,
@@ -271,6 +286,9 @@ class TensorFlowLiteDetector(private val context: Context) {
                     allProbabilities = allProbabilities
                 )
             }
+            
+            Log.d(TAG, "✅ === 실제 TensorFlow Lite 모델 실행 ===")
+            Log.d(TAG, "진짜 TensorFlow Lite 모델로 추론을 수행합니다!")
             
             // 이미지 전처리
             val tensorImage = TensorImage.fromBitmap(bitmap)
