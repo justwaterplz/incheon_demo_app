@@ -5,7 +5,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/primary_background"
-    tools:context=".AnalysisActivity">
+    tools:context=".TestAnalysisActivity">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -25,7 +25,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="AI 동작 분석"
+                android:text="🎯 AI 동작 분석"
                 android:textSize="24sp"
                 android:textStyle="bold"
                 android:textColor="@color/primary_text"
@@ -41,13 +41,16 @@
 
         </LinearLayout>
 
-        <!-- 비디오 미리보기 -->
+
+
+        <!-- 비디오 미리보기 (테스트용이므로 숨김) -->
         <VideoView
             android:id="@+id/videoView"
             android:layout_width="match_parent"
             android:layout_height="200dp"
             android:layout_marginBottom="16dp"
-            android:background="@drawable/bg_info_card" />
+            android:background="@drawable/bg_info_card"
+            android:visibility="gone" />
 
         <!-- 진행률 표시 -->
         <ProgressBar
@@ -56,17 +59,18 @@
             android:layout_width="match_parent"
             android:layout_height="6dp"
             android:layout_marginBottom="8dp"
-            android:progress="0"
+            android:progress="100"
             android:max="100"
             android:progressTint="@color/primary"
-            android:progressBackgroundTint="@color/progress_background" />
+            android:progressBackgroundTint="@color/progress_background"
+            android:visibility="gone" />
 
         <!-- 상태 메시지 -->
         <TextView
             android:id="@+id/statusText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="분석을 준비하고 있습니다..."
+            
             android:textSize="16sp"
             android:textColor="@color/secondary_text"
             android:gravity="center"
@@ -87,7 +91,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="📊 분석 결과"
+                android:text="📊 테스트 결과"
                 android:textSize="18sp"
                 android:textStyle="bold"
                 android:textColor="@color/primary_text"
@@ -113,15 +117,17 @@
             android:layout_marginBottom="16dp"
             android:visibility="gone" />
 
-        <!-- 재시도 버튼 -->
+        <!-- 다음 케이스 버튼 -->
         <Button
             android:id="@+id/btnRetry"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="🔄 다시 분석하기"
+            android:text="➡️ 다음 케이스"
             android:textSize="16sp"
             android:visibility="gone"
             style="@style/Widget.Material3.Button.OutlinedButton" />
+
+
 
     </LinearLayout>
 

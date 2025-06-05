@@ -40,6 +40,7 @@ import java.util.Locale
 import androidx.camera.view.PreviewView
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import androidx.core.app.ActivityCompat
+import java.io.File
 
 class CameraActivity : AppCompatActivity() {
     private lateinit var binding: ActivityCameraBinding
@@ -48,7 +49,7 @@ class CameraActivity : AppCompatActivity() {
     private var videoPath: String? = null
     private var timerJob: Job? = null
     private var isRecording = false
-    private var emergencyDetector: EmergencyDetector? = null
+    private var actionClassifier: ActionClassifier? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,8 +57,8 @@ class CameraActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         try {
-            // EmergencyDetector 초기화 (모델이 없어도 오류 없이 진행)
-            emergencyDetector = EmergencyDetector(this)
+            // ActionClassifier 초기화 (모델이 없어도 오류 없이 진행)
+            actionClassifier = ActionClassifier(this)
             Log.d(TAG, "CameraActivity onCreate 시작")
             requestPermissions()
         } catch (e: Exception) {
@@ -177,28 +178,37 @@ class CameraActivity : AppCompatActivity() {
                     Log.e(TAG, "Video 녹화 에러: ${event.error}")
                     Toast.makeText(this, "녹화 중 오류가 발생했습니다.", Toast.LENGTH_SHORT).show()
                 } else {
-                    videoPath = event.outputResults.outputUri.toString()
-                    Log.d(TAG, "녹화 완료: $videoPath")
+                    val videoUri = event.outputResults.outputUri
+                    Log.d(TAG, "녹화 완료 URI: $videoUri")
                     
-                    // 카메라 리소스를 먼저 정리한 후 분석 화면으로 이동
-                    lifecycleScope.launch {
-                        try {
-                            // 카메라 즉시 정리
-                            cleanupCameraResources()
-                            
-                            // 리소스 정리를 위한 짧은 지연
-                            kotlinx.coroutines.delay(200)
-                            
-                            // 분석 화면으로 이동
-                            val intent = Intent(this@CameraActivity, AnalysisActivity::class.java).apply {
-                                putExtra(AnalysisActivity.EXTRA_VIDEO_PATH, videoPath)
+                    // URI를 실제 파일 경로로 변환
+                    videoPath = convertUriToFilePath(videoUri)
+                    Log.d(TAG, "변환된 파일 경로: $videoPath")
+                    
+                    if (videoPath != null) {
+                        // 카메라 리소스를 먼저 정리한 후 분석 화면으로 이동
+                        lifecycleScope.launch {
+                            try {
+                                // 카메라 즉시 정리
+                                cleanupCameraResources()
+                                
+                                // 리소스 정리를 위한 짧은 지연
+                                kotlinx.coroutines.delay(200)
+                                
+                                // 분석 화면으로 이동
+                                val intent = Intent(this@CameraActivity, AnalysisActivity::class.java).apply {
+                                    putExtra(AnalysisActivity.EXTRA_VIDEO_PATH, videoPath)
+                                }
+                                startActivityForResult(intent, REQUEST_CODE_ANALYSIS)
+                                
+                            } catch (e: Exception) {
+                                Log.e(TAG, "화면 전환 중 오류: ${e.message}")
+                                Toast.makeText(this@CameraActivity, "화면 전환 중 오류가 발생했습니다", Toast.LENGTH_SHORT).show()
                             }
-                            startActivityForResult(intent, REQUEST_CODE_ANALYSIS)
-                            
-                        } catch (e: Exception) {
-                            Log.e(TAG, "화면 전환 중 오류: ${e.message}")
-                            Toast.makeText(this@CameraActivity, "화면 전환 중 오류가 발생했습니다", Toast.LENGTH_SHORT).show()
                         }
+                    } else {
+                        Log.e(TAG, "비디오 파일 경로 변환 실패")
+                        Toast.makeText(this@CameraActivity, "비디오 파일 처리 중 오류가 발생했습니다", Toast.LENGTH_SHORT).show()
                     }
                 }
                 binding.btnStartRecording.isEnabled = true
@@ -342,6 +352,39 @@ class CameraActivity : AppCompatActivity() {
             
         } catch (e: Exception) {
             Log.w(TAG, "카메라 리소스 정리 중 오류: ${e.message}")
+        }
+    }
+
+    private fun convertUriToFilePath(uri: Uri): String? {
+        return try {
+            Log.d(TAG, "🔍 URI 변환 시도: $uri")
+            
+            // URI가 MediaStore를 통해 생성되었으므로 임시 파일로 복사
+            val inputStream = contentResolver.openInputStream(uri)
+            if (inputStream == null) {
+                Log.e(TAG, "❌ InputStream이 null")
+                return null
+            }
+            
+            // 임시 파일 생성
+            val tempFile = File(cacheDir, "recorded_video_${System.currentTimeMillis()}.mp4")
+            val outputStream = tempFile.outputStream()
+            
+            // 파일 복사
+            inputStream.copyTo(outputStream)
+            inputStream.close()
+            outputStream.close()
+            
+            Log.d(TAG, "✅ 파일 복사 완료:")
+            Log.d(TAG, "   - 경로: ${tempFile.absolutePath}")
+            Log.d(TAG, "   - 크기: ${tempFile.length()} bytes")
+            Log.d(TAG, "   - 존재: ${tempFile.exists()}")
+            
+            tempFile.absolutePath
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ URI 변환 실패: ${e.message}", e)
+            null
         }
     }
 

@@ -57,6 +57,11 @@
             android:exported="false"
             android:screenOrientation="portrait" />
 
+        <activity
+            android:name=".TestAnalysisActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
         <!-- FileProvider 설정 -->
         <provider
             android:name="androidx.core.content.FileProvider"

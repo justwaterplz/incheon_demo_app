@@ -41,6 +41,11 @@ class MainActivity : AppCompatActivity() {
             selectVideoFile()
         }
         
+        // AI 모델 테스트 화면 버튼 (고정된 confidence score 테스트용)
+        findViewById<MaterialCardView>(R.id.btnAiModelTest).setOnClickListener {
+            startActivity(Intent(this, TestAnalysisActivity::class.java))
+        }
+        
         // 모델 로딩 테스트 버튼 (테스트용)
         testModelLoading()
     }
@@ -213,10 +218,10 @@ class MainActivity : AppCompatActivity() {
         try {
             Log.d(TAG, "🧪 === 모델 로딩 테스트 시작 ===")
             
-            // EmergencyDetector 인스턴스 생성하여 모델 로딩 테스트
-            val detector = EmergencyDetector(this)
+            // ActionClassifier 인스턴스 생성하여 모델 로딩 테스트
+            val detector = ActionClassifier(this)
             
-            Log.d(TAG, "🧪 EmergencyDetector 인스턴스 생성 완료")
+            Log.d(TAG, "🧪 ActionClassifier 인스턴스 생성 완료")
             
             // 약간의 지연 후 정리
             Handler(mainLooper).postDelayed({

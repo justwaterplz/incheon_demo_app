@@ -34,4 +34,7 @@
     <color name="emergency_red">#D32F2F</color>
     <color name="emergency_orange">#FF6F00</color>
     <color name="safe_green">#388E3C</color>
+    
+    <!-- Test Colors -->
+    <color name="test_purple">#7B1FA2</color>
 </resources>

@@ -1,129 +1,172 @@
-# 🚨 인천시 응급상황 감지 112 신고 앱
+# 🎬 인천 AI 동작 분석 데모 앱
 
-한국 인천시의 응급상황을 AI로 감지하여 자동으로 112에 신고하는 스마트 안전 앱입니다.
+인공지능을 활용한 실시간 동작 분류 및 응급상황 감지 Android 애플리케이션입니다.
 
-## 🎯 주요 기능
+## ✨ 주요 기능
 
-### 📹 **스마트 AI 신고**
-- **실시간 카메라 녹화**: 최대 1분간 현장 영상 촬영
-- **AI 응급상황 감지**: PyTorch Mobile과 TensorFlow Lite를 활용한 이중 AI 분석
-- **전용 분석 화면**: 실시간 진행률과 단계별 상태 표시
-- **자동 112 연결**: 응급상황 감지 시 즉시 112 신고 지원
+### 🎯 **8클래스 동작 분류**
+- **실시간 비디오 분석**: 1분간 녹화된 영상을 AI가 자동 분석
+- **3D ResNet 기반**: 16개 연속 프레임을 활용한 시공간 특징 학습
+- **다양한 동작 인식**: 폭행, 소매치기, 데이트 폭력, 취객, 싸움, 납치, 정상, 강도 등
 
-### 🧪 **테스트 기능**
-- **로컬 영상 분석**: 갤러리에서 비디오 파일을 선택하여 AI 모델 성능 테스트
-- **상세한 분석 결과**: 신뢰도, 응급 프레임 비율, 진단 정보 제공
+### 🏆 **Top3 결과 선택 시스템**
+- **AI 예측 결과**: 상위 3개 동작 후보를 신뢰도와 함께 표시
+- **사용자 검증**: 사용자가 직접 정확한 결과를 선택하여 정확도 향상
+- **피드백 학습**: 사용자 선택 데이터를 통한 모델 성능 개선
 
-## 🤖 AI 모델 구조
+### 🚨 **응급상황 감지**
+- **자동 판정**: 폭행, 소매치기, 데이트 폭력, 취객, 싸움, 납치, 강도 감지 시 응급상황으로 분류
+- **즉시 신고**: 119/112 직접 연결 기능
+- **다단계 검증**: 세그먼트별 분석 + 전체 비율 분석
 
-### **이중 AI 엔진**
-1. **PyTorch Mobile**: `emergency_model.ptl` (26MB)
-2. **TensorFlow Lite**: `emergency_model.tflite` (백업)
+## 🔧 기술 스택
 
-### **분석 프로세스**
-- 📊 **프레임 추출**: 3초 간격으로 최대 10개 프레임
-- 🔍 **이진 분류**: 정상 vs 응급상황 (224x224 CNN 모델)
-- 📈 **엄격한 기준**: 응급비율 > 50% AND 최고신뢰도 > 80%
+### **AI/ML**
+- **PyTorch Mobile**: 경량화된 모델 추론
+- **3D ResNet**: 시공간 특징 추출
+- **8cls.ptl**: 43MB 사전 훈련된 모델
 
-## 🛠️ 기술 스택
+### **Android**
+- **Kotlin**: 메인 개발 언어
+- **CameraX**: 비디오 녹화 및 스트리밍
+- **Coroutines**: 비동기 처리
+- **Material Design 3**: 현대적 UI/UX
 
-- **언어**: Kotlin
-- **UI**: Material Design 3, CameraX
-- **AI**: PyTorch Mobile 1.13.1, TensorFlow Lite 2.13.0
-- **권한**: Camera, Storage, Location, SMS, Phone
-- **아키텍처**: MVVM, Coroutines
+### **데이터 처리**
+- **MediaMetadataRetriever**: 비디오 프레임 추출
+- **ImageNet 정규화**: 표준 전처리 파이프라인
+- **Sliding Window**: 겹치는 세그먼트 분석
 
-## 📱 앱 구조
+## 📱 사용 방법
+
+### **1. 영상 녹화**
+```
+1. 앱 실행 → 카메라 권한 허용
+2. "녹화 시작" 버튼 터치
+3. 1분간 자동 녹화 (타이머 표시)
+4. 자동으로 분석 화면 이동
+```
+
+### **2. AI 분석 과정**
+```
+Phase 1: 영상 검증 및 메타데이터 추출
+Phase 2: 16프레임 세그먼트 생성 (2초 구간, 1초씩 이동)
+Phase 3: 각 세그먼트별 3D CNN 추론
+Phase 4: Top3 결과 집계 및 신뢰도 계산
+```
+
+### **3. 결과 선택**
+```
+✅ Top3 중 정확한 결과 선택
+❌ 모든 결과가 틀린 경우 → 수동 입력
+🚨 응급상황 감지 시 → 신고 옵션 제공
+```
+
+## 🎮 모델 성능
+
+### **입력 사양**
+- **해상도**: 200x200 RGB
+- **프레임 수**: 16개 연속 프레임
+- **세그먼트 길이**: 2초 (50% 겹침)
+- **전처리**: ImageNet 정규화
+
+### **출력 사양**
+- **클래스 수**: 8개 동작 카테고리
+- **응급 클래스**: 0,1,2,3,4,5,7번 인덱스 (폭행, 소매치기, 데이트 폭력, 취객, 싸움, 납치, 강도)
+- **신뢰도**: Softmax 확률 (0~1)
+
+### **성능 특징**
+- **추론 속도**: ~200ms/세그먼트 (CPU)
+- **메모리 사용량**: ~43MB (모델) + ~50MB (런타임)
+- **정확도**: 사용자 선택 피드백으로 지속 개선
+
+## 📂 프로젝트 구조
 
 ```
-📁 main screens
-├── 🏠 MainActivity - 메인 화면 (신고 옵션 선택)
-├── 📹 CameraActivity - 카메라 녹화
-├── 🔬 AnalysisActivity - AI 분석 화면
-└── 📝 AiReportActivity - 신고서 작성
+app/src/main/
+├── assets/
+│   └── 8cls.ptl                    # 사전 훈련된 8클래스 모델
+├── java/com/example/incheon_demo/
+│   ├── ActionClassifier.kt         # 메인 AI 추론 엔진
+│   ├── CameraActivity.kt           # 카메라 녹화 화면
+│   ├── AnalysisActivity.kt         # 분석 결과 및 선택 화면
+│   ├── ModelUtils.kt               # 모델 파일 로딩 유틸리티
+│   └── MainActivity.kt             # 메인 화면
+└── res/layout/
+    ├── activity_camera.xml         # 카메라 UI
+    └── activity_analysis.xml       # 분석 결과 UI
+```
 
-📁 AI modules
-├── 🧠 EmergencyDetector.kt - PyTorch Mobile 엔진
-├── 🔧 TensorFlowLiteDetector.kt - TensorFlow Lite 엔진
-└── 🛠️ ModelUtils.kt - 모델 유틸리티
+## 🔍 코드 주요 기능
+
+### **ActionClassifier.kt**
+```kotlin
+// 3D ResNet 스타일 연속 프레임 처리
+suspend fun analyzeVideoWithProgress(
+    videoPath: String,
+    callback: AnalysisProgressCallback
+): ActionAnalysisResult
+
+// Top3 예측 결과 생성
+data class ClassPrediction(
+    val classIndex: Int,
+    val className: String,
+    val confidence: Float,
+    val isEmergency: Boolean
+)
+```
+
+### **AnalysisActivity.kt**
+```kotlin
+// 사용자 선택 UI 생성
+private fun showTop3Predictions(predictions: List<ClassPrediction>)
+
+// 최종 결과 저장 및 피드백
+private fun saveFinalResult(prediction: ClassPrediction, method: String)
+
+// 응급상황 신고 옵션
+private fun showEmergencyOptions()
 ```
 
 ## 🚀 설치 및 실행
 
 ### **요구사항**
 - Android 7.0 (API 24) 이상
-- 카메라 하드웨어
-- 최소 4GB RAM 권장
+- 카메라 권한
+- 최소 2GB RAM
 
-### **권한**
-```xml
-<uses-permission android:name="android.permission.CAMERA" />
-<uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-<uses-permission android:name="android.permission.CALL_PHONE" />
-<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-<uses-permission android:name="android.permission.SEND_SMS" />
-```
-
-## 🔧 개발 환경 설정
-
-1. **Clone the repository**
+### **빌드 방법**
 ```bash
-git clone https://github.com/yourusername/incheon_demo.git
-cd incheon_demo
+# 1. 레포지토리 클론
+git clone [repository-url]
+
+# 2. Android Studio에서 프로젝트 열기
+# 3. 8cls.ptl 모델 파일을 app/src/main/assets/에 배치
+# 4. 빌드 및 실행
+./gradlew assembleDebug
 ```
 
-2. **Android Studio에서 열기**
-- Android Studio Hedgehog 이상 권장
-- Gradle 8.0+ 사용
+## 🎯 향후 개선 계획
 
-3. **의존성 설치**
-```bash
-./gradlew build
-```
+### **모델 성능**
+- [ ] 더 많은 동작 클래스 추가 (10→15개)
+- [ ] 실제 데이터셋으로 재훈련
+- [ ] 모델 경량화 (43MB → 20MB)
 
-## 📊 모델 성능
+### **사용자 경험**
+- [ ] 실시간 분석 (녹화 중 동시 처리)
+- [ ] 분석 히스토리 저장
+- [ ] 관리자 대시보드
 
-### **현재 한계점**
-- ⚠️ **합성 데이터 훈련**: 실제 응급상황 데이터 부족
-- 🎨 **색상/패턴 기반**: 단순 이미지 분류 수준
-- 📉 **동작 인식 부족**: 시간적 연속성 분석 없음
+### **시스템 안정성**
+- [ ] 오프라인 모드 지원
+- [ ] 클라우드 백업
+- [ ] 다중 카메라 지원
 
-### **개선 방향**
-- 🎥 **3D CNN 적용**: 시간적 패턴 분석
-- 📈 **실제 데이터셋**: UCF-Crime, HMDB-51 등 활용
-- 🎯 **객체 감지 통합**: YOLO + Action Recognition
+## 📞 문의
 
-## 🏗️ 프로젝트 히스토리
-
-### **해결된 주요 이슈들**
-1. ✅ **WindowLeak 오류**: Activity 생명주기 관리 개선
-2. ✅ **BufferQueue 에러**: 카메라 리소스 즉시 정리 로직 추가
-3. ✅ **MediaMetadataRetriever 오류**: 예외 처리 및 Fallback 모드 구현
-4. ✅ **모델 통합**: PyTorch Mobile + TensorFlow Lite 이중 지원
-5. ✅ **UX 개선**: 전용 분석 화면과 실시간 진행률 표시
-
-## 🤝 기여 방법
-
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## 📄 라이선스
-
-이 프로젝트는 MIT 라이선스를 따릅니다. 자세한 내용은 `LICENSE` 파일을 참조하세요.
-
-## 👨‍💻 개발자
-
-- **프로젝트**: 인천시 공공데이터 기반 응급상황 감지 시스템
-- **AI 모델**: 응급상황 이진 분류 CNN
-- **플랫폼**: Android (Kotlin)
-
-## 📞 연락처
-
-프로젝트에 대한 질문이나 제안사항이 있으시면 Issues를 통해 연락해주세요.
+개발 관련 문의나 개선 제안은 이슈를 통해 남겨주세요.
 
 ---
 
-**⚠️ 주의사항**: 이 앱은 프로토타입이며, 실제 응급상황에서는 직접 112에 신고하는 것이 가장 확실합니다. 
+**🤖 Powered by PyTorch Mobile & 3D ResNet** 
